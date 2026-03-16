@@ -267,6 +267,15 @@ Now that the template is imported, implement the ORIGINAL USER REQUEST immediate
 Do not ask me to repeat the request if it is present above.
 Only ask a clarification question if the request is genuinely impossible to execute safely.
 
+STRICT RESPONSE CONTRACT (MANDATORY):
+1. Reply using ONLY Bolt artifact actions (<boltArtifact> with nested <boltAction> tags).
+2. Do NOT include markdown code fences.
+3. Do NOT include explanations, summaries, tips, bullet points, or any prose outside artifact tags.
+4. Do NOT include "Características", "Para usarlo", or follow-up suggestions in the generated file content.
+5. File contents must be pure code only.
+6. If you need to create or modify files, do it via <boltAction type="file" filePath="...">...</boltAction>.
+7. If a command is necessary, emit it via <boltAction type="shell">...</boltAction> or <boltAction type="start">...</boltAction>.
+
 IMPORTANT: Dont Forget to install the dependencies before running the app by using \`npm install && npm run dev\`
 `;
 
