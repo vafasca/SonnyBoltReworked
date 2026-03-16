@@ -285,6 +285,7 @@ async function writePrompt(input: any, prompt: string) {
       const el = node as HTMLElement;
       el.textContent = value;
       el.dispatchEvent(new InputEvent('input', { bubbles: true, data: value, inputType: 'insertText' }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
     }, prompt);
 
     return;

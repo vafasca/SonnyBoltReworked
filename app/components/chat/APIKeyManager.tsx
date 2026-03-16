@@ -92,6 +92,42 @@ export const APIKeyManager: React.FC<APIKeyManagerProps> = ({ provider, apiKey, 
     setIsEditing(false);
   };
 
+  const webchatLoginAction = async (method: 'POST' | 'PUT' | 'DELETE', platform: 'chatgpt' | 'claude' | 'qwen') => {
+    const sessionId = `default-${platform}`;
+
+    const response = await fetch('/api/webchat-login', {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ platform, sessionId }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error((data as any)?.error || 'Error en login de WebChat');
+    }
+
+    return data;
+  };
+
+  const startLogin = async (platform: 'chatgpt' | 'claude' | 'qwen') => {
+    try {
+      await webchatLoginAction('POST', platform);
+      window.alert(`Se abrió navegador para ${platform}.\nInicia sesión manualmente y luego pulsa "Confirmar".`);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'No se pudo iniciar login');
+    }
+  };
+
+  const confirmLogin = async (platform: 'chatgpt' | 'claude' | 'qwen') => {
+    try {
+      await webchatLoginAction('PUT', platform);
+      window.alert(`Sesión guardada para ${platform}.`);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'No se pudo confirmar login');
+    }
+  };
+
   return (
     <div className="flex items-center justify-between py-3 px-1">
       <div className="flex items-center gap-2 flex-1">
@@ -105,9 +141,7 @@ export const APIKeyManager: React.FC<APIKeyManagerProps> = ({ provider, apiKey, 
               {isWebChatProvider ? (
                 <>
                   <div className="i-ph:check-circle-fill text-green-500 w-4 h-4" />
-                  <span className="text-xs text-green-500">
-                    Usa sesión web persistente (Playwright){tempKey ? ` · ${tempKey}` : ''}
-                  </span>
+                  <span className="text-xs text-green-500">Login persistente por navegador (sin API key)</span>
                 </>
               ) : apiKey ? (
                 <>
@@ -132,21 +166,26 @@ export const APIKeyManager: React.FC<APIKeyManagerProps> = ({ provider, apiKey, 
 
       <div className="flex items-center gap-2 shrink-0">
         {isWebChatProvider ? (
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              value={tempKey}
-              placeholder="Session ID (ej: mi-cuenta)"
-              onChange={(e) => setTempKey(e.target.value)}
-              className="w-[260px] px-3 py-1.5 text-sm rounded border border-bolt-elements-borderColor \n                        bg-bolt-elements-prompt-background text-bolt-elements-textPrimary \n                        focus:outline-none focus:ring-2 focus:ring-bolt-elements-focus"
-            />
-            <IconButton
-              onClick={handleSave}
-              title="Guardar Session ID"
-              className="bg-green-500/10 hover:bg-green-500/20 text-green-500"
-            >
-              <div className="i-ph:check w-4 h-4" />
-            </IconButton>
+          <div className="flex items-center gap-3 text-xs">
+            {(['chatgpt', 'claude', 'qwen'] as const).map((platform) => (
+              <div key={platform} className="flex items-center gap-1">
+                <span className="capitalize text-bolt-elements-textSecondary">{platform}</span>
+                <IconButton
+                  onClick={() => startLogin(platform)}
+                  title={`Iniciar sesión ${platform}`}
+                  className="bg-blue-500/10 hover:bg-blue-500/20 text-blue-500"
+                >
+                  <div className="i-ph:sign-in w-4 h-4" />
+                </IconButton>
+                <IconButton
+                  onClick={() => confirmLogin(platform)}
+                  title={`Confirmar sesión ${platform}`}
+                  className="bg-green-500/10 hover:bg-green-500/20 text-green-500"
+                >
+                  <div className="i-ph:check w-4 h-4" />
+                </IconButton>
+              </div>
+            ))}
           </div>
         ) : isEditing ? (
           <div className="flex items-center gap-2">

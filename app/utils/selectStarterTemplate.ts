@@ -92,6 +92,7 @@ export const selectStarterTemplate = async (options: { message: string; model: s
     message,
     model,
     provider,
+    purpose: 'template-selector',
     system: starterTemplateSelectionPrompt(templates),
   };
   const response = await fetch('/api/llmcall', {

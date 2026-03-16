@@ -73,12 +73,13 @@ function validateTokenLimits(modelDetails: ModelInfo, requestedTokens: number): 
 }
 
 async function llmCallAction({ context, request }: ActionFunctionArgs) {
-  const { system, message, model, provider, streamOutput } = await request.json<{
+  const { system, message, model, provider, streamOutput, purpose } = await request.json<{
     system: string;
     message: string;
     model: string;
     provider: ProviderInfo;
     streamOutput?: boolean;
+    purpose?: string;
   }>();
 
   const { name: providerName } = provider;
@@ -110,7 +111,10 @@ async function llmCallAction({ context, request }: ActionFunctionArgs) {
       prompt: `${system ? `${system}\n\n` : ''}${message}`.trim(),
       sessionId: resolveWebChatSessionId({ apiKeys, platform }),
       headless: resolveWebChatHeadless(context.cloudflare?.env as Record<string, string> | undefined),
-      conversationId: resolveConversationIdFromReferer(referer),
+      conversationId:
+        purpose === 'template-selector'
+          ? `template-selector-${platform}-${Date.now()}`
+          : resolveConversationIdFromReferer(referer),
       serverEnv: context.cloudflare?.env as Record<string, string> | undefined,
     });
 
