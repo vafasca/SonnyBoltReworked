@@ -24,6 +24,14 @@ export interface StreamingOptions extends Omit<Parameters<typeof _streamText>[0]
   };
 }
 
+export type LlmPromptTrace = {
+  provider: string;
+  model: string;
+  system: string;
+  messages: ReturnType<typeof convertToCoreMessages>;
+  parameters: Record<string, unknown>;
+};
+
 const logger = createScopedLogger('stream-text');
 
 function getCompletionTokenLimit(modelDetails: any): number {
@@ -65,6 +73,7 @@ export async function streamText(props: {
   messageSliceId?: number;
   chatMode?: 'discuss' | 'build';
   designScheme?: DesignScheme;
+  onPreparedPrompt?: (trace: LlmPromptTrace) => void;
 }) {
   const {
     messages,
@@ -79,6 +88,7 @@ export async function streamText(props: {
     summary,
     chatMode,
     designScheme,
+    onPreparedPrompt,
   } = props;
   let currentModel = DEFAULT_MODEL;
   let currentProvider = DEFAULT_PROVIDER.name;
@@ -288,6 +298,16 @@ export async function streamText(props: {
     // Set temperature to 1 for reasoning models (required by OpenAI API)
     ...(isReasoning ? { temperature: 1 } : {}),
   };
+
+  onPreparedPrompt?.({
+    provider: provider.name,
+    model: modelDetails.name,
+    system: streamParams.system,
+    messages: streamParams.messages,
+    parameters: Object.fromEntries(
+      Object.entries(streamParams).filter(([key]) => !['model', 'messages', 'system'].includes(key)),
+    ),
+  });
 
   // DEBUG: Log final streaming parameters
   logger.info(

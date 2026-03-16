@@ -2,7 +2,7 @@ import { type ActionFunctionArgs } from '@remix-run/cloudflare';
 import { createDataStream, formatDataStreamPart, generateId } from 'ai';
 import { MAX_RESPONSE_SEGMENTS, MAX_TOKENS, type FileMap } from '~/lib/.server/llm/constants';
 import { CONTINUE_PROMPT } from '~/lib/common/prompts/prompts';
-import { streamText, type Messages, type StreamingOptions } from '~/lib/.server/llm/stream-text';
+import { streamText, type LlmPromptTrace, type Messages, type StreamingOptions } from '~/lib/.server/llm/stream-text';
 import SwitchableStream from '~/lib/.server/llm/switchable-stream';
 import type { IProviderSetting } from '~/types/model';
 import { createScopedLogger } from '~/utils/logger';
@@ -121,6 +121,15 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
             conversationId: resolveConversationIdFromReferer(referer),
             serverEnv: context.cloudflare?.env as Record<string, string> | undefined,
           });
+
+          logger.info(
+            `PROMPT_TRACE(webchat): ${JSON.stringify({
+              provider: selectedProps.provider,
+              model: selectedProps.model,
+              request: { prompt: selectedProps.content },
+              response: { text: response },
+            })}`,
+          );
 
           dataStream.write(formatDataStreamPart('text', response));
           dataStream.writeMessageAnnotation({
@@ -317,6 +326,9 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
               designScheme,
               summary,
               messageSliceId,
+              onPreparedPrompt: (trace: LlmPromptTrace) => {
+                logger.info(`PROMPT_TRACE(api-key): ${JSON.stringify(trace)}`);
+              },
             });
 
             result.mergeIntoDataStream(dataStream);
@@ -358,6 +370,9 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
           designScheme,
           summary,
           messageSliceId,
+          onPreparedPrompt: (trace: LlmPromptTrace) => {
+            logger.info(`PROMPT_TRACE(api-key): ${JSON.stringify(trace)}`);
+          },
         });
 
         (async () => {

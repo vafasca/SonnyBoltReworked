@@ -73,13 +73,14 @@ function validateTokenLimits(modelDetails: ModelInfo, requestedTokens: number): 
 }
 
 async function llmCallAction({ context, request }: ActionFunctionArgs) {
-  const { system, message, model, provider, streamOutput, purpose } = await request.json<{
+  const { system, message, model, provider, streamOutput, purpose, debugTrace } = await request.json<{
     system: string;
     message: string;
     model: string;
     provider: ProviderInfo;
     streamOutput?: boolean;
     purpose?: string;
+    debugTrace?: boolean;
   }>();
 
   const { name: providerName } = provider;
@@ -127,12 +128,34 @@ async function llmCallAction({ context, request }: ActionFunctionArgs) {
       });
     }
 
-    return new Response(JSON.stringify({ text }), {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/json',
+    return new Response(
+      JSON.stringify(
+        debugTrace
+          ? {
+              text,
+              trace: {
+                mode: 'webchat',
+                provider: providerName,
+                model,
+                request: {
+                  system,
+                  message,
+                  combinedPrompt: `${system ? `${system}\n\n` : ''}${message}`.trim(),
+                },
+                response: {
+                  text,
+                },
+              },
+            }
+          : { text },
+      ),
+      {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+        },
       },
-    });
+    );
   }
 
   if (streamOutput) {
@@ -273,12 +296,35 @@ async function llmCallAction({ context, request }: ActionFunctionArgs) {
       const result = await generateText(finalParams);
       logger.info(`Generated response`);
 
-      return new Response(JSON.stringify(result), {
-        status: 200,
-        headers: {
-          'Content-Type': 'application/json',
+      const sanitizedRequest = {
+        system,
+        messages: finalParams.messages,
+        parameters: Object.fromEntries(
+          Object.entries(finalParams).filter(([key]) => !['model', 'messages', 'system'].includes(key)),
+        ),
+      };
+
+      return new Response(
+        JSON.stringify(
+          debugTrace
+            ? {
+                ...result,
+                trace: {
+                  mode: 'api-key',
+                  provider: providerName,
+                  model: modelDetails.name,
+                  request: sanitizedRequest,
+                },
+              }
+            : result,
+        ),
+        {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+          },
         },
-      });
+      );
     } catch (error: unknown) {
       console.log(error);
 
