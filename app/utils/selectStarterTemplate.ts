@@ -269,12 +269,15 @@ Only ask a clarification question if the request is genuinely impossible to exec
 
 STRICT RESPONSE CONTRACT (MANDATORY):
 1. Reply using ONLY Bolt artifact actions (<boltArtifact> with nested <boltAction> tags).
-2. Do NOT include markdown code fences.
-3. Do NOT include explanations, summaries, tips, bullet points, or any prose outside artifact tags.
-4. Do NOT include "Características", "Para usarlo", or follow-up suggestions in the generated file content.
-5. File contents must be pure code only.
-6. If you need to create or modify files, do it via <boltAction type="file" filePath="...">...</boltAction>.
-7. If a command is necessary, emit it via <boltAction type="shell">...</boltAction> or <boltAction type="start">...</boltAction>.
+2. Emit exactly one top-level <boltArtifact> block per response.
+3. The top-level artifact MUST include both id and title attributes.
+4. Never nest a <boltArtifact> inside another <boltArtifact>.
+5. Every file must be produced in its own <boltAction type="file" filePath="...">...</boltAction>.
+6. Do NOT include markdown code fences.
+7. Do NOT include explanations, summaries, tips, bullet points, or any prose outside artifact tags.
+8. Do NOT include "Características", "Para usarlo", or follow-up suggestions in the generated file content.
+9. File contents must be pure code only.
+10. If a command is necessary, emit it via <boltAction type="shell">...</boltAction> or <boltAction type="start">...</boltAction>.
 
 IMPORTANT: Dont Forget to install the dependencies before running the app by using \`npm install && npm run dev\`
 `;
