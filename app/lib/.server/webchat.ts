@@ -281,10 +281,11 @@ async function writePrompt(input: any, prompt: string) {
   }
 
   if (isContentEditable) {
-    await input.evaluate((node: Element) => {
-      (node as HTMLElement).innerHTML = '';
-    });
-    await input.type(prompt, { delay: 8 });
+    await input.evaluate((node: Element, value: string) => {
+      const el = node as HTMLElement;
+      el.textContent = value;
+      el.dispatchEvent(new InputEvent('input', { bubbles: true, data: value, inputType: 'insertText' }));
+    }, prompt);
 
     return;
   }
@@ -304,12 +305,13 @@ async function submitPrompt(page: any, input: any, submitSelectors: string[]) {
     const isDisabled = await button.isDisabled().catch(() => false);
 
     if (!isDisabled) {
-      await button.click().catch(() => undefined);
+      await button.click({ force: true }).catch(() => undefined);
       return;
     }
   }
 
-  await input.press('Enter');
+  await input.press('Enter').catch(() => undefined);
+  await input.press('Control+Enter').catch(() => undefined);
 }
 
 function assertNoAuthError(url: string) {

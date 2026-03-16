@@ -105,7 +105,9 @@ export const APIKeyManager: React.FC<APIKeyManagerProps> = ({ provider, apiKey, 
               {isWebChatProvider ? (
                 <>
                   <div className="i-ph:check-circle-fill text-green-500 w-4 h-4" />
-                  <span className="text-xs text-green-500">Usa sesión web persistente (Playwright)</span>
+                  <span className="text-xs text-green-500">
+                    Usa sesión web persistente (Playwright){tempKey ? ` · ${tempKey}` : ''}
+                  </span>
                 </>
               ) : apiKey ? (
                 <>
@@ -129,7 +131,24 @@ export const APIKeyManager: React.FC<APIKeyManagerProps> = ({ provider, apiKey, 
       </div>
 
       <div className="flex items-center gap-2 shrink-0">
-        {isWebChatProvider ? null : isEditing ? (
+        {isWebChatProvider ? (
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={tempKey}
+              placeholder="Session ID (ej: mi-cuenta)"
+              onChange={(e) => setTempKey(e.target.value)}
+              className="w-[260px] px-3 py-1.5 text-sm rounded border border-bolt-elements-borderColor \n                        bg-bolt-elements-prompt-background text-bolt-elements-textPrimary \n                        focus:outline-none focus:ring-2 focus:ring-bolt-elements-focus"
+            />
+            <IconButton
+              onClick={handleSave}
+              title="Guardar Session ID"
+              className="bg-green-500/10 hover:bg-green-500/20 text-green-500"
+            >
+              <div className="i-ph:check w-4 h-4" />
+            </IconButton>
+          </div>
+        ) : isEditing ? (
           <div className="flex items-center gap-2">
             <input
               type="password"
