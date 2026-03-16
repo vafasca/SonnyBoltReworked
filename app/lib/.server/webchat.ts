@@ -269,6 +269,66 @@ async function waitForStableResponse(page: any, selectors: string[]) {
   return previous;
 }
 
+function normalizeWebChatTextResponse(raw: string) {
+  const text = raw.trim();
+
+  if (text.includes('<boltArtifact') || text.includes('<boltAction')) {
+    return text;
+  }
+
+  const lines = text.replace(/\r/g, '').split('\n');
+  const fileLinePattern = /^(?:#{1,6}\s*)?(?:\*\*|`)?([./]?[\w-]+(?:\/[\w.-]+)+\.[a-zA-Z0-9]+)(?:\*\*|`)?\s*:?$/;
+
+  const fileEntries: Array<{ path: string; content: string }> = [];
+  let currentPath: string | null = null;
+  let buffer: string[] = [];
+
+  const pushCurrent = () => {
+    if (!currentPath) {
+      return;
+    }
+
+    const content = buffer.join('\n').trim();
+
+    if (content.length === 0) {
+      return;
+    }
+
+    fileEntries.push({ path: currentPath, content });
+  };
+
+  for (const line of lines) {
+    const match = line.trim().match(fileLinePattern);
+
+    if (match && !line.trim().toLowerCase().startsWith('http')) {
+      pushCurrent();
+      currentPath = match[1].startsWith('/') ? match[1] : `/${match[1]}`;
+      buffer = [];
+      continue;
+    }
+
+    if (currentPath) {
+      buffer.push(line);
+    }
+  }
+
+  pushCurrent();
+
+  if (fileEntries.length === 0) {
+    return text;
+  }
+
+  const artifacts = fileEntries
+    .map((entry, index) => {
+      const fileName = entry.path.split('/').filter(Boolean).pop() || `file-${index + 1}`;
+
+      return `<boltArtifact id="webchat-${Date.now()}-${index}" title="${fileName}" type="bundled">\n<boltAction type="file" filePath="${entry.path}">\n${entry.content}\n</boltAction>\n</boltArtifact>`;
+    })
+    .join('\n');
+
+  return `${artifacts}\n\n${text}`;
+}
+
 async function writePrompt(input: any, prompt: string) {
   const tagName = await input.evaluate((node: Element) => node.tagName.toLowerCase()).catch(() => '');
   const isContentEditable = await input.evaluate((node: Element) => (node as HTMLElement).isContentEditable);
@@ -465,7 +525,7 @@ export async function runWebChatPrompt(options: {
   await writePrompt(input, prompt);
   await submitPrompt(page, input, config.submitSelectors);
 
-  const response = await waitForStableResponse(page, config.outputSelectors);
+  const response = normalizeWebChatTextResponse(await waitForStableResponse(page, config.outputSelectors));
 
   if (!response) {
     throw new Error('No se pudo obtener una respuesta del chat web.');
