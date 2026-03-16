@@ -38,7 +38,7 @@ Examples:
 User: I need to build a todo app
 Response:
 <selection>
-  <templateName>react-basic-starter</templateName>
+  <templateName>Vite React</templateName>
   <title>Simple React todo application</title>
 </selection>
 </example>
@@ -59,8 +59,12 @@ Instructions:
 4. Consider both technical requirements and tags
 5. If no perfect match exists, recommend the closest option
 
+Validation rules:
+- templateName must exactly match one of the names listed in Available templates.
+- Never output markdown, code fences, explanations, or any text outside <selection>...</selection>.
+- Always include both <templateName> and <title>.
+
 Important: Provide only the selection tags in your response, no additional text.
-MOST IMPORTANT: YOU DONT HAVE TIME TO THINK JUST START RESPONDING BASED ON HUNCH 
 `;
 
 const templates: Template[] = STARTER_TEMPLATES.filter((t) => !t.name.includes('shadcn'));
@@ -144,7 +148,7 @@ const getGitHubRepoContent = async (repoName: string): Promise<{ name: string; p
   }
 };
 
-export async function getTemplates(templateName: string, title?: string) {
+export async function getTemplates(templateName: string, title?: string, originalRequest?: string) {
   const template = STARTER_TEMPLATES.find((t) => t.name == templateName);
 
   if (!template) {
@@ -256,7 +260,12 @@ template import is done, and you can now use the imported files,
 edit only the files that need to be changed, and you can create new files as needed.
 NO NOT EDIT/WRITE ANY FILES THAT ALREADY EXIST IN THE PROJECT AND DOES NOT NEED TO BE MODIFIED
 ---
-Now that the Template is imported please continue with my original request
+ORIGINAL USER REQUEST (do not ignore this):
+${originalRequest?.trim() || '(missing original request)'}
+
+Now that the template is imported, implement the ORIGINAL USER REQUEST immediately.
+Do not ask me to repeat the request if it is present above.
+Only ask a clarification question if the request is genuinely impossible to execute safely.
 
 IMPORTANT: Dont Forget to install the dependencies before running the app by using \`npm install && npm run dev\`
 `;

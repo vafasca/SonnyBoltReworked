@@ -420,7 +420,7 @@ export const ChatImpl = memo(
           });
 
           if (template !== 'blank') {
-            const temResp = await getTemplates(template, title).catch((e) => {
+            const temResp = await getTemplates(template, title, finalMessageContent).catch((e) => {
               if (e.message.includes('rate limit')) {
                 toast.warning('Rate limit exceeded. Skipping starter template\n Continuing with blank template');
               } else {
