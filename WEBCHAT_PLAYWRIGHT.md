@@ -10,19 +10,45 @@ Se agregó un proveedor nuevo: `WebChat`.
   - `claude`
   - `qwen`
 - Las sesiones persisten por carpeta local en `.webchat-sessions/<plataforma>/<sessionId>`.
-- También se guarda el `lastChatUrl` para continuar en el mismo chat entre mensajes.
+- Se guardan:
+  - `storage-state.json` (cookies/localStorage de login)
+  - `session-state.json` (`lastChatUrl` para seguir en el mismo hilo)
 
-## Login persistente
+## Flujo correcto de login persistente
 
-Usa este endpoint para abrir el navegador, iniciar sesión manualmente y guardar la sesión:
+1. Abrir navegador de login:
 
 ```bash
 curl -X POST http://localhost:5173/api/webchat-login \
   -H 'content-type: application/json' \
-  -d '{"platform":"chatgpt","sessionId":"mi-cuenta","timeoutMs":180000}'
+  -d '{"platform":"chatgpt","sessionId":"mi-cuenta"}'
 ```
 
-> Nota: este endpoint abre Chromium en modo visible (`headless: false`).
+2. En la ventana del navegador:
+   - completa captcha/login
+   - espera a ver el chat normal
+
+3. Confirmar y guardar sesión:
+
+```bash
+curl -X PUT http://localhost:5173/api/webchat-login \
+  -H 'content-type: application/json' \
+  -d '{"platform":"chatgpt","sessionId":"mi-cuenta"}'
+```
+
+4. (Opcional) Ver estado de sesión:
+
+```bash
+curl "http://localhost:5173/api/webchat-login?platform=chatgpt&sessionId=mi-cuenta"
+```
+
+5. (Opcional) Cancelar login abierto:
+
+```bash
+curl -X DELETE http://localhost:5173/api/webchat-login \
+  -H 'content-type: application/json' \
+  -d '{"platform":"chatgpt","sessionId":"mi-cuenta"}'
+```
 
 ## Uso en chat
 
@@ -32,6 +58,8 @@ La app enviará el prompt al chat web y devolverá el último bloque de respuest
 ## Variables útiles
 
 - `WEBCHAT_SESSION_DIR`: ruta base opcional para sesiones persistentes.
+- `WEBCHAT_HEADLESS`: `true|false` para ejecución de prompts.
+- `WEBCHAT_BROWSER`: `chromium` (default), `chrome`, `edge`.
 
 ## Limitaciones
 
