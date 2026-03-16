@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import type { Browser, BrowserContext } from 'playwright';
+import type { Browser, BrowserContext, Page } from 'playwright';
 
 export const WEBCHAT_PROVIDER_NAME = 'WebChat';
 
@@ -26,6 +26,17 @@ interface ActiveLoginSession {
   platform: WebChatPlatform;
   sessionId: string;
   sessionDir: string;
+}
+
+interface ActivePromptSession {
+  browser: Browser;
+  context: BrowserContext;
+  page: Page;
+  sessionDir: string;
+  platform: WebChatPlatform;
+  sessionId: string;
+  conversationId: string;
+  lastUsedAt: number;
 }
 
 interface SessionStatus {
@@ -57,6 +68,9 @@ const PLATFORM_CONFIG: Record<WebChatPlatform, PlatformConfig> = {
 };
 
 const activeLoginSessions = new Map<string, ActiveLoginSession>();
+const activePromptSessions = new Map<string, ActivePromptSession>();
+
+const PROMPT_SESSION_IDLE_MS = 10 * 60 * 1000;
 
 function getSessionRoot() {
   return process.env.WEBCHAT_SESSION_DIR || path.join(process.cwd(), '.webchat-sessions');
@@ -90,6 +104,10 @@ function getActiveLoginKey(platform: WebChatPlatform, sessionId: string) {
   return `${platform}:${sessionId}`;
 }
 
+function getActivePromptKey(platform: WebChatPlatform, sessionId: string, conversationId: string) {
+  return `${platform}:${sessionId}:${conversationId}`;
+}
+
 function resolveChannel(preference: BrowserPreference): 'chrome' | 'msedge' | undefined {
   if (preference === 'chrome') {
     return 'chrome';
@@ -110,6 +128,26 @@ function getBrowserPreference(serverEnv?: Record<string, string>): BrowserPrefer
   }
 
   return 'chromium';
+}
+
+export function resolveConversationIdFromReferer(referer?: string | null) {
+  if (!referer) {
+    return 'default';
+  }
+
+  try {
+    const url = new URL(referer);
+    const parts = url.pathname.split('/').filter(Boolean);
+    const chatIndex = parts.findIndex((part) => part === 'chat');
+
+    if (chatIndex >= 0 && parts[chatIndex + 1]) {
+      return parts[chatIndex + 1];
+    }
+
+    return 'default';
+  } catch {
+    return 'default';
+  }
 }
 
 async function readSessionState(sessionDir: string): Promise<WebChatSessionState> {
@@ -139,7 +177,6 @@ async function hasFile(filePath: string) {
 }
 
 async function createContextForPlatform(options: {
-  platform: WebChatPlatform;
   sessionDir: string;
   headless: boolean;
   serverEnv?: Record<string, string>;
@@ -256,11 +293,20 @@ async function writePrompt(input: any, prompt: string) {
 }
 
 async function submitPrompt(page: any, input: any, submitSelectors: string[]) {
-  const submitButton = await pickFirstLocator(page, submitSelectors);
+  for (const selector of submitSelectors) {
+    const button = page.locator(selector).first();
+    const count = await button.count();
 
-  if (submitButton) {
-    await submitButton.click();
-    return;
+    if (count === 0) {
+      continue;
+    }
+
+    const isDisabled = await button.isDisabled().catch(() => false);
+
+    if (!isDisabled) {
+      await button.click().catch(() => undefined);
+      return;
+    }
   }
 
   await input.press('Enter');
@@ -272,6 +318,84 @@ function assertNoAuthError(url: string) {
       'La sesión web parece inválida (auth/error). Repite login en /api/webchat-login y confirma con PUT para guardar storageState.',
     );
   }
+}
+
+async function closePromptSession(key: string) {
+  const session = activePromptSessions.get(key);
+
+  if (!session) {
+    return;
+  }
+
+  try {
+    await session.context.close();
+    await session.browser.close();
+  } catch {
+    // ignore close errors
+  }
+
+  activePromptSessions.delete(key);
+}
+
+async function cleanupIdlePromptSessions() {
+  const now = Date.now();
+  const entries = Array.from(activePromptSessions.entries());
+
+  for (const [key, session] of entries) {
+    if (!session.browser.isConnected() || now - session.lastUsedAt > PROMPT_SESSION_IDLE_MS) {
+      await closePromptSession(key);
+    }
+  }
+}
+
+async function getOrCreatePromptSession(options: {
+  platform: WebChatPlatform;
+  sessionId: string;
+  conversationId: string;
+  headless: boolean;
+  serverEnv?: Record<string, string>;
+  startUrl: string;
+}) {
+  await cleanupIdlePromptSessions();
+
+  const key = getActivePromptKey(options.platform, options.sessionId, options.conversationId);
+  const existing = activePromptSessions.get(key);
+
+  if (existing && existing.browser.isConnected()) {
+    existing.lastUsedAt = Date.now();
+    return { key, session: existing, storageStatePath: getStorageStatePath(existing.sessionDir) };
+  }
+
+  if (existing) {
+    await closePromptSession(key);
+  }
+
+  const sessionDir = getSessionDir(options.platform, options.sessionId);
+  await ensureDir(sessionDir);
+
+  const { browser, context, storageStatePath } = await createContextForPlatform({
+    sessionDir,
+    headless: options.headless,
+    serverEnv: options.serverEnv,
+  });
+
+  const page = context.pages()[0] || (await context.newPage());
+  await page.goto(options.startUrl, { waitUntil: 'domcontentloaded' });
+
+  const created: ActivePromptSession = {
+    browser,
+    context,
+    page,
+    sessionDir,
+    platform: options.platform,
+    sessionId: options.sessionId,
+    conversationId: options.conversationId,
+    lastUsedAt: Date.now(),
+  };
+
+  activePromptSessions.set(key, created);
+
+  return { key, session: created, storageStatePath };
 }
 
 export async function getWebChatSessionStatus(options: { platform: WebChatPlatform; sessionId: string }) {
@@ -297,10 +421,11 @@ export async function runWebChatPrompt(options: {
   platform: WebChatPlatform;
   prompt: string;
   sessionId: string;
+  conversationId?: string;
   headless?: boolean;
   serverEnv?: Record<string, string>;
 }) {
-  const { platform, prompt, sessionId, headless = true, serverEnv } = options;
+  const { platform, prompt, sessionId, conversationId = 'default', headless = true, serverEnv } = options;
   const config = PLATFORM_CONFIG[platform];
 
   if (!config) {
@@ -311,49 +436,49 @@ export async function runWebChatPrompt(options: {
   await ensureDir(sessionDir);
 
   const sessionState = await readSessionState(sessionDir);
+  const startUrl = sessionState.lastChatUrl || config.url;
 
-  const { browser, context, storageStatePath } = await createContextForPlatform({
+  const { session, storageStatePath } = await getOrCreatePromptSession({
     platform,
-    sessionDir,
+    sessionId,
+    conversationId,
     headless,
     serverEnv,
+    startUrl,
   });
 
-  try {
-    const page = context.pages()[0] || (await context.newPage());
-    await page.goto(sessionState.lastChatUrl || config.url, { waitUntil: 'domcontentloaded' });
-    assertNoAuthError(page.url());
+  const page = session.page;
 
-    const input = await pickFirstLocator(page, config.inputSelectors);
+  assertNoAuthError(page.url());
 
-    if (!input) {
-      throw new Error(
-        'No se encontró caja de texto. Asegúrate de iniciar sesión con POST /api/webchat-login y luego confirmar con PUT /api/webchat-login.',
-      );
-    }
+  const input = await pickFirstLocator(page, config.inputSelectors);
 
-    await writePrompt(input, prompt);
-    await submitPrompt(page, input, config.submitSelectors);
-
-    const response = await waitForStableResponse(page, config.outputSelectors);
-
-    if (!response) {
-      throw new Error('No se pudo obtener una respuesta del chat web.');
-    }
-
-    await context.storageState({ path: storageStatePath });
-
-    await writeSessionState(sessionDir, {
-      ...sessionState,
-      lastChatUrl: page.url(),
-      loginVerifiedAt: sessionState.loginVerifiedAt,
-    });
-
-    return response;
-  } finally {
-    await context.close();
-    await browser.close();
+  if (!input) {
+    throw new Error(
+      'No se encontró caja de texto. Asegúrate de iniciar sesión con POST /api/webchat-login y luego confirmar con PUT /api/webchat-login.',
+    );
   }
+
+  await writePrompt(input, prompt);
+  await submitPrompt(page, input, config.submitSelectors);
+
+  const response = await waitForStableResponse(page, config.outputSelectors);
+
+  if (!response) {
+    throw new Error('No se pudo obtener una respuesta del chat web.');
+  }
+
+  await session.context.storageState({ path: storageStatePath });
+
+  await writeSessionState(sessionDir, {
+    ...sessionState,
+    lastChatUrl: page.url(),
+    loginVerifiedAt: sessionState.loginVerifiedAt,
+  });
+
+  session.lastUsedAt = Date.now();
+
+  return response;
 }
 
 export async function startWebChatLogin(options: {
@@ -387,7 +512,6 @@ export async function startWebChatLogin(options: {
   }
 
   const { browser, context } = await createContextForPlatform({
-    platform,
     sessionDir,
     headless: false,
     serverEnv,

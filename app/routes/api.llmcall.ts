@@ -13,6 +13,7 @@ import {
   WEBCHAT_PROVIDER_NAME,
   resolveWebChatHeadless,
   resolveWebChatSessionId,
+  resolveConversationIdFromReferer,
   type WebChatPlatform,
 } from '~/lib/.server/webchat';
 
@@ -98,6 +99,7 @@ async function llmCallAction({ context, request }: ActionFunctionArgs) {
   }
 
   const cookieHeader = request.headers.get('Cookie');
+  const referer = request.headers.get('Referer');
   const apiKeys = getApiKeysFromCookie(cookieHeader);
   const providerSettings = getProviderSettingsFromCookie(cookieHeader);
 
@@ -108,6 +110,8 @@ async function llmCallAction({ context, request }: ActionFunctionArgs) {
       prompt: `${system ? `${system}\n\n` : ''}${message}`.trim(),
       sessionId: resolveWebChatSessionId({ apiKeys, platform }),
       headless: resolveWebChatHeadless(context.cloudflare?.env as Record<string, string> | undefined),
+      conversationId: resolveConversationIdFromReferer(referer),
+      serverEnv: context.cloudflare?.env as Record<string, string> | undefined,
     });
 
     if (streamOutput) {

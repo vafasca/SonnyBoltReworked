@@ -9,6 +9,7 @@ import {
   WEBCHAT_PROVIDER_NAME,
   resolveWebChatHeadless,
   resolveWebChatSessionId,
+  resolveConversationIdFromReferer,
   type WebChatPlatform,
 } from '~/lib/.server/webchat';
 
@@ -44,6 +45,7 @@ async function enhancerAction({ context, request }: ActionFunctionArgs) {
   }
 
   const cookieHeader = request.headers.get('Cookie');
+  const referer = request.headers.get('Referer');
   const apiKeys = getApiKeysFromCookie(cookieHeader);
   const providerSettings = getProviderSettingsFromCookie(cookieHeader);
 
@@ -54,6 +56,8 @@ async function enhancerAction({ context, request }: ActionFunctionArgs) {
       prompt: `${message}`.trim(),
       sessionId: resolveWebChatSessionId({ apiKeys, platform }),
       headless: resolveWebChatHeadless(context.cloudflare?.env as Record<string, string> | undefined),
+      conversationId: resolveConversationIdFromReferer(referer),
+      serverEnv: context.cloudflare?.env as Record<string, string> | undefined,
     });
 
     return new Response(text, {
