@@ -33,14 +33,16 @@ export class EnhancedStreamingMessageParser extends StreamingMessageParser {
   }
 
   parse(messageId: string, input: string): string {
+    const sanitizedInput = this._sanitizeMalformedArtifactContent(input);
+
     // First try the normal parsing
-    let output = super.parse(messageId, input);
+    let output = super.parse(messageId, sanitizedInput);
 
     // If no artifacts were detected, check for code blocks that should be files
-    if (!this._hasDetectedArtifacts(input)) {
-      const enhancedInput = this._detectAndWrapCodeBlocks(messageId, input);
+    if (!this._hasDetectedArtifacts(sanitizedInput)) {
+      const enhancedInput = this._detectAndWrapCodeBlocks(messageId, sanitizedInput);
 
-      if (enhancedInput !== input) {
+      if (enhancedInput !== sanitizedInput) {
         // Reset and reparse with enhanced input
         this.reset();
         output = super.parse(messageId, enhancedInput);
@@ -48,6 +50,30 @@ export class EnhancedStreamingMessageParser extends StreamingMessageParser {
     }
 
     return output;
+  }
+
+  /**
+   * Some models occasionally emit malformed artifact payloads where markdown code fences,
+   * nested artifact tags, or duplicated action tags leak into <boltAction type="file">.
+   * This sanitizes file-action payloads before parsing/execution to avoid writing prompt prose
+   * or control tags into real project files.
+   */
+  private _sanitizeMalformedArtifactContent(input: string): string {
+    if (!input.includes('<boltAction') || !input.includes('type="file"')) {
+      return input;
+    }
+
+    return input.replace(/(<boltAction[^>]*type="file"[^>]*>)([\s\S]*?)(<\/boltAction>)/gim, (_m, open, content, close) => {
+      const sanitizedContent = content
+        .replace(/```[a-zA-Z0-9_-]*\n?/g, '')
+        .replace(/```/g, '')
+        .replace(/<\/?boltArtifact[^>]*>/g, '')
+        .replace(/<boltAction[^>]*>/g, '')
+        .replace(/<\/boltAction>/g, '')
+        .trim();
+
+      return `${open}\n${sanitizedContent}\n${close}`;
+    });
   }
 
   private _hasDetectedArtifacts(input: string): boolean {
