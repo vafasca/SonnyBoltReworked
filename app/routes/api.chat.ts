@@ -1,5 +1,5 @@
 import { type ActionFunctionArgs } from '@remix-run/cloudflare';
-import { createDataStream, generateId } from 'ai';
+import { createDataStream, formatDataStreamPart, generateId } from 'ai';
 import { MAX_RESPONSE_SEGMENTS, MAX_TOKENS, type FileMap } from '~/lib/.server/llm/constants';
 import { CONTINUE_PROMPT } from '~/lib/common/prompts/prompts';
 import { streamText, type Messages, type StreamingOptions } from '~/lib/.server/llm/stream-text';
@@ -14,6 +14,7 @@ import { extractPropertiesFromMessage } from '~/lib/.server/llm/utils';
 import type { DesignScheme } from '~/types/design-scheme';
 import { MCPService } from '~/lib/services/mcpService';
 import { StreamRecoveryManager } from '~/lib/.server/llm/stream-recovery';
+import { runWebChatPrompt, WEBCHAT_PROVIDER_NAME, type WebChatPlatform } from '~/lib/.server/webchat';
 
 export async function action(args: ActionFunctionArgs) {
   return chatAction(args);
@@ -100,6 +101,32 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
         let messageSliceId = 0;
 
         const processedMessages = await mcpService.processToolInvocations(messages, dataStream);
+        const lastUserMessage = processedMessages.filter((message) => message.role === 'user').slice(-1)[0];
+        const selectedProps = lastUserMessage ? extractPropertiesFromMessage(lastUserMessage) : null;
+
+        if (selectedProps?.provider === WEBCHAT_PROVIDER_NAME) {
+          const response = await runWebChatPrompt({
+            platform: selectedProps.model as WebChatPlatform,
+            prompt: selectedProps.content,
+            sessionId: `default-${selectedProps.model}`,
+            headless: true,
+          });
+
+          dataStream.write(formatDataStreamPart('text', response));
+          dataStream.writeMessageAnnotation({
+            type: 'usage',
+            value: { completionTokens: 0, promptTokens: 0, totalTokens: 0 },
+          });
+          dataStream.writeData({
+            type: 'progress',
+            label: 'response',
+            status: 'complete',
+            order: progressCounter++,
+            message: 'Response Generated',
+          } satisfies ProgressAnnotation);
+
+          return;
+        }
 
         if (processedMessages.length > 3) {
           messageSliceId = processedMessages.length - 3;

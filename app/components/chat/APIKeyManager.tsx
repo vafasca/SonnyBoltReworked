@@ -37,6 +37,8 @@ export const APIKeyManager: React.FC<APIKeyManagerProps> = ({ provider, apiKey, 
   const [tempKey, setTempKey] = useState(apiKey);
   const [isEnvKeySet, setIsEnvKeySet] = useState(false);
 
+  const isWebChatProvider = provider.name === 'WebChat';
+
   // Reset states and load saved key when provider changes
   useEffect(() => {
     // Load saved API key from cookies for this provider
@@ -70,8 +72,13 @@ export const APIKeyManager: React.FC<APIKeyManagerProps> = ({ provider, apiKey, 
   }, [provider.name]);
 
   useEffect(() => {
+    if (isWebChatProvider) {
+      setIsEnvKeySet(true);
+      return;
+    }
+
     checkEnvApiKey();
-  }, [checkEnvApiKey]);
+  }, [checkEnvApiKey, isWebChatProvider]);
 
   const handleSave = () => {
     // Save to parent state
@@ -89,10 +96,18 @@ export const APIKeyManager: React.FC<APIKeyManagerProps> = ({ provider, apiKey, 
     <div className="flex items-center justify-between py-3 px-1">
       <div className="flex items-center gap-2 flex-1">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-bolt-elements-textSecondary">{provider?.name} API Key:</span>
+          <span className="text-sm font-medium text-bolt-elements-textSecondary">
+            {provider?.name}
+            {isWebChatProvider ? ' Session' : ' API Key'}:
+          </span>
           {!isEditing && (
             <div className="flex items-center gap-2">
-              {apiKey ? (
+              {isWebChatProvider ? (
+                <>
+                  <div className="i-ph:check-circle-fill text-green-500 w-4 h-4" />
+                  <span className="text-xs text-green-500">Usa sesión web persistente (Playwright)</span>
+                </>
+              ) : apiKey ? (
                 <>
                   <div className="i-ph:check-circle-fill text-green-500 w-4 h-4" />
                   <span className="text-xs text-green-500">Set via UI</span>
@@ -114,7 +129,7 @@ export const APIKeyManager: React.FC<APIKeyManagerProps> = ({ provider, apiKey, 
       </div>
 
       <div className="flex items-center gap-2 shrink-0">
-        {isEditing ? (
+        {isWebChatProvider ? null : isEditing ? (
           <div className="flex items-center gap-2">
             <input
               type="password"

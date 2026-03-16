@@ -20,6 +20,7 @@ import AmazonBedrockProvider from './providers/amazon-bedrock';
 import GithubProvider from './providers/github';
 import MoonshotProvider from './providers/moonshot';
 import ZaiProvider from './providers/z-ai';
+import WebChatProvider from './providers/webchat';
 
 export {
   AnthropicProvider,
@@ -44,4 +45,5 @@ export {
   AmazonBedrockProvider,
   GithubProvider,
   ZaiProvider,
+  WebChatProvider,
 };
