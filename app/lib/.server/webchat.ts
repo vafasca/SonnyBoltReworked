@@ -9,25 +9,33 @@ interface PlatformConfig {
   url: string;
   inputSelectors: string[];
   outputSelectors: string[];
+  submitSelectors: string[];
 }
 
 const PLATFORM_CONFIG: Record<WebChatPlatform, PlatformConfig> = {
   chatgpt: {
     url: 'https://chatgpt.com/',
-    inputSelectors: ['#prompt-textarea', 'textarea[data-id="root"]', 'textarea'],
+    inputSelectors: ['#prompt-textarea', 'textarea[data-id="root"]', 'textarea', 'div[contenteditable="true"]'],
     outputSelectors: ['[data-message-author-role="assistant"]', 'article'],
+    submitSelectors: ['button[data-testid="send-button"]', 'button[aria-label*="Send"]', 'button[type="submit"]'],
   },
   claude: {
     url: 'https://claude.ai/chats',
     inputSelectors: ['div[contenteditable="true"]', 'textarea'],
     outputSelectors: ['[data-is-streaming="false"]', 'div[data-testid="message-content"]'],
+    submitSelectors: ['button[aria-label*="Send"]', 'button[type="submit"]'],
   },
   qwen: {
     url: 'https://chat.qwen.ai/',
     inputSelectors: ['textarea', 'div[contenteditable="true"]'],
     outputSelectors: ['.assistant-message', '[data-role="assistant"]'],
+    submitSelectors: ['button[aria-label*="Send"]', 'button[type="submit"]'],
   },
 };
+
+interface WebChatSessionState {
+  lastChatUrl?: string;
+}
 
 function getSessionRoot() {
   return process.env.WEBCHAT_SESSION_DIR || path.join(process.cwd(), '.webchat-sessions');
@@ -43,6 +51,31 @@ function sanitize(value: string) {
 
 async function getPlaywright() {
   return import('playwright');
+}
+
+function getSessionDir(platform: WebChatPlatform, sessionId: string) {
+  return path.join(getSessionRoot(), sanitize(platform), sanitize(sessionId));
+}
+
+function getStateFilePath(sessionDir: string) {
+  return path.join(sessionDir, 'session-state.json');
+}
+
+async function readSessionState(sessionDir: string): Promise<WebChatSessionState> {
+  try {
+    const stateFile = getStateFilePath(sessionDir);
+    const content = await fs.readFile(stateFile, 'utf-8');
+    const parsed = JSON.parse(content) as WebChatSessionState;
+
+    return parsed || {};
+  } catch {
+    return {};
+  }
+}
+
+async function writeSessionState(sessionDir: string, state: WebChatSessionState) {
+  const stateFile = getStateFilePath(sessionDir);
+  await fs.writeFile(stateFile, JSON.stringify(state, null, 2), 'utf-8');
 }
 
 async function pickFirstLocator(page: any, selectors: string[]) {
@@ -111,6 +144,40 @@ async function waitForStableResponse(page: any, selectors: string[]) {
   return previous;
 }
 
+async function writePrompt(input: any, prompt: string) {
+  const tagName = await input.evaluate((node: Element) => node.tagName.toLowerCase()).catch(() => '');
+  const isContentEditable = await input.evaluate((node: Element) => (node as HTMLElement).isContentEditable);
+
+  await input.click({ timeout: 10_000 });
+
+  if (tagName === 'textarea' || tagName === 'input') {
+    await input.fill(prompt);
+    return;
+  }
+
+  if (isContentEditable) {
+    await input.evaluate((node: Element) => {
+      (node as HTMLElement).innerHTML = '';
+    });
+    await input.type(prompt, { delay: 8 });
+
+    return;
+  }
+
+  await input.fill(prompt);
+}
+
+async function submitPrompt(page: any, input: any, submitSelectors: string[]) {
+  const submitButton = await pickFirstLocator(page, submitSelectors);
+
+  if (submitButton) {
+    await submitButton.click();
+    return;
+  }
+
+  await input.press('Enter');
+}
+
 export async function runWebChatPrompt(options: {
   platform: WebChatPlatform;
   prompt: string;
@@ -125,8 +192,10 @@ export async function runWebChatPrompt(options: {
   }
 
   const { chromium } = await getPlaywright();
-  const sessionDir = path.join(getSessionRoot(), sanitize(platform), sanitize(sessionId));
+  const sessionDir = getSessionDir(platform, sessionId);
   await ensureDir(sessionDir);
+
+  const sessionState = await readSessionState(sessionDir);
 
   const context = await chromium.launchPersistentContext(sessionDir, {
     headless,
@@ -135,7 +204,7 @@ export async function runWebChatPrompt(options: {
 
   try {
     const page = context.pages()[0] || (await context.newPage());
-    await page.goto(config.url, { waitUntil: 'domcontentloaded' });
+    await page.goto(sessionState.lastChatUrl || config.url, { waitUntil: 'domcontentloaded' });
 
     const input = await pickFirstLocator(page, config.inputSelectors);
 
@@ -145,15 +214,19 @@ export async function runWebChatPrompt(options: {
       );
     }
 
-    await input.click({ timeout: 10_000 });
-    await input.fill(prompt);
-    await input.press('Enter');
+    await writePrompt(input, prompt);
+    await submitPrompt(page, input, config.submitSelectors);
 
     const response = await waitForStableResponse(page, config.outputSelectors);
 
     if (!response) {
       throw new Error('No se pudo obtener una respuesta del chat web.');
     }
+
+    await writeSessionState(sessionDir, {
+      ...sessionState,
+      lastChatUrl: page.url(),
+    });
 
     return response;
   } finally {
@@ -170,8 +243,10 @@ export async function runWebChatLogin(options: { platform: WebChatPlatform; sess
   }
 
   const { chromium } = await getPlaywright();
-  const sessionDir = path.join(getSessionRoot(), sanitize(platform), sanitize(sessionId));
+  const sessionDir = getSessionDir(platform, sessionId);
   await ensureDir(sessionDir);
+
+  const sessionState = await readSessionState(sessionDir);
 
   const context = await chromium.launchPersistentContext(sessionDir, {
     headless: false,
@@ -179,7 +254,13 @@ export async function runWebChatLogin(options: { platform: WebChatPlatform; sess
   });
 
   const page = context.pages()[0] || (await context.newPage());
-  await page.goto(config.url, { waitUntil: 'domcontentloaded' });
+  await page.goto(sessionState.lastChatUrl || config.url, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(timeoutMs);
+
+  await writeSessionState(sessionDir, {
+    ...sessionState,
+    lastChatUrl: page.url(),
+  });
+
   await context.close();
 }

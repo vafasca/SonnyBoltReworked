@@ -10,6 +10,7 @@ Se agregó un proveedor nuevo: `WebChat`.
   - `claude`
   - `qwen`
 - Las sesiones persisten por carpeta local en `.webchat-sessions/<plataforma>/<sessionId>`.
+- También se guarda el `lastChatUrl` para continuar en el mismo chat entre mensajes.
 
 ## Login persistente
 
@@ -36,4 +37,5 @@ La app enviará el prompt al chat web y devolverá el último bloque de respuest
 
 - Los selectores de UI pueden cambiar por proveedor.
 - En entornos sin navegador disponible, Playwright puede fallar.
-- Actualmente usa `sessionId` por defecto `default-<modelo>` cuando se llama desde `/api/chat`.
+- Usa `sessionId` por defecto `default-<modelo>` cuando no se especifica uno.
+- Puedes sobreescribir por cookie en `apiKeys` con `WebChat:<plataforma>` (ej. `WebChat:chatgpt`).
