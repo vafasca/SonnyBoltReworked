@@ -8,6 +8,13 @@ import { LLMManager } from '~/lib/modules/llm/manager';
 import type { ModelInfo } from '~/lib/modules/llm/types';
 import { getApiKeysFromCookie, getProviderSettingsFromCookie } from '~/lib/api/cookies';
 import { createScopedLogger } from '~/utils/logger';
+import {
+  runWebChatPrompt,
+  WEBCHAT_PROVIDER_NAME,
+  resolveWebChatHeadless,
+  resolveWebChatSessionId,
+  type WebChatPlatform,
+} from '~/lib/.server/webchat';
 
 export async function action(args: ActionFunctionArgs) {
   return llmCallAction(args);
@@ -93,6 +100,32 @@ async function llmCallAction({ context, request }: ActionFunctionArgs) {
   const cookieHeader = request.headers.get('Cookie');
   const apiKeys = getApiKeysFromCookie(cookieHeader);
   const providerSettings = getProviderSettingsFromCookie(cookieHeader);
+
+  if (providerName === WEBCHAT_PROVIDER_NAME) {
+    const platform = model as WebChatPlatform;
+    const text = await runWebChatPrompt({
+      platform,
+      prompt: `${system ? `${system}\n\n` : ''}${message}`.trim(),
+      sessionId: resolveWebChatSessionId({ apiKeys, platform }),
+      headless: resolveWebChatHeadless(context.cloudflare?.env as Record<string, string> | undefined),
+    });
+
+    if (streamOutput) {
+      return new Response(text, {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/plain; charset=utf-8',
+        },
+      });
+    }
+
+    return new Response(JSON.stringify({ text }), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+  }
 
   if (streamOutput) {
     try {

@@ -65,9 +65,13 @@ MOST IMPORTANT: YOU DONT HAVE TIME TO THINK JUST START RESPONDING BASED ON HUNCH
 
 const templates: Template[] = STARTER_TEMPLATES.filter((t) => !t.name.includes('shadcn'));
 
-const parseSelectedTemplate = (llmOutput: string): { template: string; title: string } | null => {
+const parseSelectedTemplate = (llmOutput?: string): { template: string; title: string } | null => {
   try {
     // Extract content between <templateName> tags
+    if (!llmOutput || typeof llmOutput !== 'string') {
+      return null;
+    }
+
     const templateNameMatch = llmOutput.match(/<templateName>(.*?)<\/templateName>/);
     const titleMatch = llmOutput.match(/<title>(.*?)<\/title>/);
 
@@ -94,10 +98,18 @@ export const selectStarterTemplate = async (options: { message: string; model: s
     method: 'POST',
     body: JSON.stringify(requestBody),
   });
-  const respJson: { text: string } = await response.json();
-  console.log(respJson);
 
-  const { text } = respJson;
+  if (!response.ok) {
+    console.error('Template selection request failed:', response.status);
+
+    return {
+      template: 'blank',
+      title: '',
+    };
+  }
+
+  const respJson: { text?: string } = await response.json();
+  const text = respJson?.text;
   const selectedTemplate = parseSelectedTemplate(text);
 
   if (selectedTemplate) {

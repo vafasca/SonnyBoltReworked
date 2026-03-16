@@ -57,6 +57,30 @@ async function pickFirstLocator(page: any, selectors: string[]) {
   return null;
 }
 
+export function getDefaultSessionId(platform: WebChatPlatform) {
+  return `default-${platform}`;
+}
+
+export function resolveWebChatSessionId(options: { apiKeys?: Record<string, string>; platform: WebChatPlatform }) {
+  const { apiKeys, platform } = options;
+
+  return (
+    apiKeys?.[`${WEBCHAT_PROVIDER_NAME}:${platform}`] ||
+    apiKeys?.[WEBCHAT_PROVIDER_NAME] ||
+    getDefaultSessionId(platform)
+  );
+}
+
+export function resolveWebChatHeadless(serverEnv?: Record<string, string>) {
+  const value = serverEnv?.WEBCHAT_HEADLESS || process.env.WEBCHAT_HEADLESS;
+
+  if (!value) {
+    return false;
+  }
+
+  return value === 'true' || value === '1';
+}
+
 async function waitForStableResponse(page: any, selectors: string[]) {
   let stableTicks = 0;
   let previous = '';
@@ -116,7 +140,9 @@ export async function runWebChatPrompt(options: {
     const input = await pickFirstLocator(page, config.inputSelectors);
 
     if (!input) {
-      throw new Error('No se encontró caja de texto en la plataforma. Revisa selectores o sesión.');
+      throw new Error(
+        'No se encontró caja de texto en la plataforma. Inicia sesión primero con /api/webchat-login y reutiliza el mismo sessionId.',
+      );
     }
 
     await input.click({ timeout: 10_000 });

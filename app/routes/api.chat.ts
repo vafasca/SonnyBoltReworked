@@ -14,7 +14,13 @@ import { extractPropertiesFromMessage } from '~/lib/.server/llm/utils';
 import type { DesignScheme } from '~/types/design-scheme';
 import { MCPService } from '~/lib/services/mcpService';
 import { StreamRecoveryManager } from '~/lib/.server/llm/stream-recovery';
-import { runWebChatPrompt, WEBCHAT_PROVIDER_NAME, type WebChatPlatform } from '~/lib/.server/webchat';
+import {
+  runWebChatPrompt,
+  WEBCHAT_PROVIDER_NAME,
+  resolveWebChatHeadless,
+  resolveWebChatSessionId,
+  type WebChatPlatform,
+} from '~/lib/.server/webchat';
 
 export async function action(args: ActionFunctionArgs) {
   return chatAction(args);
@@ -108,8 +114,8 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
           const response = await runWebChatPrompt({
             platform: selectedProps.model as WebChatPlatform,
             prompt: selectedProps.content,
-            sessionId: `default-${selectedProps.model}`,
-            headless: true,
+            sessionId: resolveWebChatSessionId({ apiKeys, platform: selectedProps.model as WebChatPlatform }),
+            headless: resolveWebChatHeadless(context.cloudflare?.env as Record<string, string> | undefined),
           });
 
           dataStream.write(formatDataStreamPart('text', response));
