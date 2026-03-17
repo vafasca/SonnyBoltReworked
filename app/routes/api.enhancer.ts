@@ -4,6 +4,14 @@ import { stripIndents } from '~/utils/stripIndent';
 import type { ProviderInfo } from '~/types/model';
 import { getApiKeysFromCookie, getProviderSettingsFromCookie } from '~/lib/api/cookies';
 import { createScopedLogger } from '~/utils/logger';
+import {
+  runWebChatPrompt,
+  WEBCHAT_PROVIDER_NAME,
+  resolveWebChatHeadless,
+  resolveWebChatSessionId,
+  resolveConversationIdFromReferer,
+  type WebChatPlatform,
+} from '~/lib/.server/webchat';
 
 export async function action(args: ActionFunctionArgs) {
   return enhancerAction(args);
@@ -37,8 +45,28 @@ async function enhancerAction({ context, request }: ActionFunctionArgs) {
   }
 
   const cookieHeader = request.headers.get('Cookie');
+  const referer = request.headers.get('Referer');
   const apiKeys = getApiKeysFromCookie(cookieHeader);
   const providerSettings = getProviderSettingsFromCookie(cookieHeader);
+
+  if (providerName === WEBCHAT_PROVIDER_NAME) {
+    const platform = model as WebChatPlatform;
+    const text = await runWebChatPrompt({
+      platform,
+      prompt: `${message}`.trim(),
+      sessionId: resolveWebChatSessionId({ apiKeys, platform }),
+      headless: resolveWebChatHeadless(context.cloudflare?.env as Record<string, string> | undefined),
+      conversationId: resolveConversationIdFromReferer(referer),
+      serverEnv: context.cloudflare?.env as Record<string, string> | undefined,
+    });
+
+    return new Response(text, {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+      },
+    });
+  }
 
   try {
     const result = await streamText({
